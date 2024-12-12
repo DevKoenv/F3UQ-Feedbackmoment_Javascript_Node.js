@@ -5,7 +5,7 @@ export class Event {
     public description: string,
     public date: string,
     public organizer: string,
-    public createdAt: string
+    public createdAt: string,
   ) {}
 
   isUpcoming(): boolean {

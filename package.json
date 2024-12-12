@@ -2,6 +2,9 @@
   "name": "f3uq-feedbackmoment_javascript_node.js",
   "module": "src/index.ts",
   "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts"
+  },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/bun": "latest",

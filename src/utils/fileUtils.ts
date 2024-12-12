@@ -1,10 +1,9 @@
-import fs from 'fs';
-import path from 'path';
-import Logger from './Logger';
+import fs from "fs";
+import Logger from "./Logger";
 
 export const readJSON = <T>(filePath: string): T[] => {
   if (!fs.existsSync(filePath)) return [];
-  const data = fs.readFileSync(filePath, 'utf8');
+  const data = fs.readFileSync(filePath, "utf8");
   Logger.log(`Read data from ${filePath}`);
   return JSON.parse(data);
 };

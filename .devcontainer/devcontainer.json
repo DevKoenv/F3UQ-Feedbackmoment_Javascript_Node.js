@@ -8,13 +8,11 @@
     // Configure properties specific to VS Code.
     "vscode": {
       // Add the IDs of extensions you want installed when the container is created.
-      "extensions": [
-        "oven.bun-vscode"
-      ]
+      "extensions": ["oven.bun-vscode"]
     }
-},
-"features": {
-	"ghcr.io/devcontainers/features/common-utils:2": {},
-	"ghcr.io/devcontainers/features/git:1": {}
-}
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {},
+    "ghcr.io/devcontainers/features/git:1": {}
+  }
 }

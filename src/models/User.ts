@@ -1,11 +1,11 @@
-import bcrypt from 'bcryptjs';
+import bcrypt from "bcryptjs";
 
 export class User {
   constructor(
     public id: number,
     public username: string,
     public password: string,
-    public createdAt: string
+    public createdAt: string,
   ) {}
 
   async validatePassword(password: string): Promise<boolean> {
