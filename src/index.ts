@@ -1,11 +1,10 @@
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
 import Logger from "./utils/Logger";
 import authRoutes from "./routes/authRoutes";
 import eventRoutes from "./routes/eventRoutes";
+import { errorHandler } from "./middleware/errorHandler";
 
 const app = express();
 const PORT = 3000;
@@ -15,7 +14,6 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use((req, res, next) => {
   Logger.log(`${req.method} ${req.path}`);
-
   next();
 });
 
@@ -23,14 +21,8 @@ app.use((req, res, next) => {
 app.use("/auth", authRoutes);
 app.use("/events", eventRoutes);
 
-// Create data folder and files
-const dataDir = join(__dirname, "data");
-
-if (!existsSync(dataDir)) {
-  mkdirSync(dataDir);
-  writeFileSync(join(dataDir, "users.json"), "[]");
-  writeFileSync(join(dataDir, "events.json"), "[]");
-}
+// Error handler
+app.use(errorHandler);
 
 // Start server
 app.listen(PORT, () => {
