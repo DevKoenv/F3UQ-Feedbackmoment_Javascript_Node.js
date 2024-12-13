@@ -2,37 +2,95 @@ import fs from 'fs';
 import path from 'path';
 import Logger from './Logger';
 
+type QueueItem<T> = {
+  filePath: string;
+  data: T[];
+  timestamp: number;
+};
+
 export class DataStore<T> {
   private static instances = new Map<string, DataStore<any>>();
-  private static saveQueues = new Map<string, unknown[][]>();
+  private static globalSaveQueue = new Map<string, QueueItem<any>>();
   private static isSaving = false;
-  
+  private static globalSyncInterval: NodeJS.Timer | null = null;
+  private static syncIntervalMs = 5000;
+  private static activeInstances = new Set<DataStore<any>>();
+
   private data: T[] = [];
   private readonly filePath: string;
   private readonly dirPath: string;
+  private readonly enableAutoSync: boolean;
 
-  private constructor(type: string) {
+  private constructor(type: string, options: { syncIntervalMs?: number; enableAutoSync?: boolean } = {}) {
+    const { syncIntervalMs = 5000, enableAutoSync = true } = options;
+    
+    DataStore.syncIntervalMs = syncIntervalMs;
+    this.enableAutoSync = enableAutoSync;
+    
     Logger.debug(`Initializing DataStore for type: ${type}`);
     this.dirPath = path.join(__dirname, '..', 'data');
     this.filePath = path.join(this.dirPath, `${type}.json`);
+    
     this.ensureDirectoryExists();
     this.loadData();
+    
+    if (this.enableAutoSync) {
+      DataStore.startGlobalSync(this);
+    }
+    
     Logger.debug(`DataStore initialized for type: ${type}`);
   }
 
-  static getInstance<U>(type: string): DataStore<U> {
+  static getInstance<U>(type: string, options?: { syncIntervalMs?: number; enableAutoSync?: boolean }): DataStore<U> {
     if (!this.instances.has(type)) {
-      this.instances.set(type, new DataStore<U>(type));
+      this.instances.set(type, new DataStore<U>(type, options));
     }
     return this.instances.get(type) as DataStore<U>;
   }
 
-  private getSaveQueue(): T[][] {
-    const queue = DataStore.saveQueues.get(this.filePath) as T[][] || [];
-    if (!DataStore.saveQueues.has(this.filePath)) {
-      DataStore.saveQueues.set(this.filePath, queue);
+  private static startGlobalSync(instance: DataStore<any>): void {
+    this.activeInstances.add(instance);
+    
+    if (!this.globalSyncInterval) {
+      this.globalSyncInterval = setInterval(() => {
+        Logger.debug('Global sync triggered');
+        for (const store of this.activeInstances) {
+          store.loadData();
+          this.processGlobalQueue();
+        }
+      }, this.syncIntervalMs);
+      
+      Logger.debug(`Global sync started with interval: ${this.syncIntervalMs}ms`);
     }
-    return queue;
+  }
+
+  private static stopGlobalSync(instance: DataStore<any>): void {
+    this.activeInstances.delete(instance);
+    
+    if (this.activeInstances.size === 0 && this.globalSyncInterval) {
+      clearInterval(this.globalSyncInterval);
+      this.globalSyncInterval = null;
+      Logger.debug('Global sync stopped - no active instances');
+    }
+  }
+
+  private static async processGlobalQueue(): Promise<void> {
+    if (this.isSaving || this.globalSaveQueue.size === 0) return;
+    
+    this.isSaving = true;
+    
+    try {
+      const promises = Array.from(this.globalSaveQueue.entries()).map(async ([filePath, queueItem]) => {
+        await fs.promises.writeFile(filePath, JSON.stringify(queueItem.data, null, 2));
+        this.globalSaveQueue.delete(filePath);
+      });
+
+      await Promise.all(promises);
+    } catch (error) {
+      Logger.error(`Failed to process global queue: ${error}`);
+    } finally {
+      this.isSaving = false;
+    }
   }
 
   private ensureDirectoryExists(): void {
@@ -62,38 +120,18 @@ export class DataStore<T> {
   }
 
   private saveData(): void {
-    const queue = this.getSaveQueue();
-    queue.push([...this.data]);
-    this.processSaveQueue();
+    DataStore.globalSaveQueue.set(this.filePath, {
+      filePath: this.filePath,
+      data: [...this.data],
+      timestamp: Date.now()
+    });
+    DataStore.processGlobalQueue();
   }
 
-  private async processSaveQueue(): Promise<void> {
-    if (DataStore.isSaving) {
-      Logger.debug('Save queue already processing');
-      return;
-    }
-    
-    DataStore.isSaving = true;
-    Logger.debug('Processing save queue');
-    
-    try {
-      for (const [filePath, dataQueue] of DataStore.saveQueues.entries()) {
-        if (dataQueue.length === 0) continue;
-        
-        Logger.debug(`Saving ${dataQueue.length} queued changes to ${filePath}`);
-        const latestData = dataQueue[dataQueue.length - 1];
-        await fs.promises.writeFile(filePath, JSON.stringify(latestData, null, 2));
-        DataStore.saveQueues.set(filePath, []);
-        Logger.debug(`Saved changes to ${filePath}`);
-      }
-    } catch (error) {
-      Logger.error(`Failed to process save queue: ${error}`);
-    } finally {
-      DataStore.isSaving = false;
-      
-      if ([...DataStore.saveQueues.values()].some(queue => queue.length > 0)) {
-        setTimeout(() => this.processSaveQueue(), 100);
-      }
+  public stopAutoSync(): void {
+    if (this.enableAutoSync) {
+      DataStore.stopGlobalSync(this);
+      Logger.debug(`Auto-sync disabled for ${this.filePath}`);
     }
   }
 
@@ -143,5 +181,14 @@ export class DataStore<T> {
       Logger.warn(`Delete failed: Item not found with id: ${id}`);
     }
     return success;
+  }
+
+  public dispose(): void {
+    this.stopAutoSync();
+    if (DataStore.instances.has(this.filePath)) {
+      DataStore.instances.delete(this.filePath);
+    }
+    DataStore.globalSaveQueue.delete(this.filePath);
+    Logger.debug(`DataStore disposed for: ${this.filePath}`);
   }
 }
